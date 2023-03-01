@@ -79,7 +79,7 @@ module Spaceship
       def latest_resolution_center_messages(client: nil)
         client ||= Spaceship::ConnectAPI
         threads = fetch_resolution_center_threads(client: client)
-        threads.first.fetch_messages(client: client)
+        threads.empty? ? [] : threads.first.fetch_messages(client: client)
       end
     end
   end
