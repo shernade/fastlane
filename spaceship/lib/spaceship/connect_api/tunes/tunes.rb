@@ -134,6 +134,114 @@ module Spaceship
           tunes_request_client.post("v1/apps", body)
         end
 
+        def create_default_availabilities(app_id:)
+          territories = tunes_request_client.get("v1/apps/#{app_id}/supportedTerritories?limit=200").body["data"].map { |t| t["id"] }
+          included = []
+          territoryAvailabilitiesData = []
+          territories.each_with_index do |territory, i|
+            territory_id = "#{app_id}-#{territory}"
+            included << {
+              "type": "territoryAvailabilities",
+              "id": territory_id,
+              "attributes": {
+                "available": false
+              },
+              "relationships": {
+                "territory": {
+                  "data": {
+                    "type": "territories",
+                    "id": territory
+                  }
+                }
+              }
+            }
+            territoryAvailabilitiesData << {
+              "type": "territoryAvailabilities",
+              "id": territory_id
+            }
+          end
+
+          body = {
+            "data": {
+              "type": "appAvailabilities",
+              "attributes": {
+                "availableInNewTerritories": false
+              },
+              "relationships": {
+                "app": {
+                  "data": {
+                    "type": "apps",
+                    "id": app_id
+                  }
+                },
+                "territoryAvailabilities": {
+                  "data": territoryAvailabilitiesData
+                }
+              }
+            },
+            "included": included
+          }
+
+          tunes_request_client.post("v2/appAvailabilities", body)
+        end
+
+        def update_availabilities(app_id:, territories: nil)
+          return unless territories
+
+          params = tunes_request_client.build_params(filter: {}, includes: "territory", limit: 200, sort: nil)
+          existing_territories = tunes_request_client.get("v2/appAvailabilities/#{app_id}/territoryAvailabilities", params).body
+
+          existing_territories["data"].each do |existing_territory|
+            existing_territory["attributes"]["available"] = territories.include?(existing_territory["relationships"]["territory"]["data"]["id"])
+          end
+          included = []
+          territoryAvailabilitiesData = []
+          existing_territories["data"].each do |territory, i|
+            included << {
+              "type": "territoryAvailabilities",
+              "id": territory["id"],
+              "attributes": {
+                "available": territory["attributes"]["available"]
+              },
+              "relationships": {
+                "territory": {
+                  "data": {
+                    "type": "territories",
+                    "id": territory["relationships"]["territory"]["data"]["id"]
+                  }
+                }
+              }
+            }
+            territoryAvailabilitiesData << {
+              "type": "territoryAvailabilities",
+              "id": territory["id"]
+            }
+          end
+
+          body = {
+            "data": {
+              "type": "bulkUpdateAppAvailabilities",
+              "attributes": {
+                "availableInNewTerritories": false
+              },
+              "relationships": {
+                "app": {
+                  "data": {
+                    "type": "apps",
+                    "id": app_id
+                  }
+                },
+                "territoryAvailabilities": {
+                  "data": territoryAvailabilitiesData
+                }
+              }
+            },
+            "included": included
+          }
+
+          tunes_request_client.post("v1/bulkUpdateAppAvailabilities", body)
+        end
+
         # Updates app attributes, price tier, visibility in regions or countries.
         # Use territory_ids with allow_removing_from_sale to remove app from sale
         # @param territory_ids updates app visibility in regions or countries.
