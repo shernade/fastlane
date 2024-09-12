@@ -1368,7 +1368,7 @@ module Spaceship
 
         def get_resolution_center_threads(filter: {}, includes: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes)
-          tunes_request_client.get('resolutionCenterThreads', params)
+          tunes_request_client.get('v1/resolutionCenterThreads', params)
         end
 
         def get_resolution_center_messages(thread_id:, filter: {}, includes: nil)
