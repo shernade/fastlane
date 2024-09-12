@@ -21,7 +21,7 @@ module Spaceship
           raise "Keyword 'app_store_version_id' is deprecated and 'app_info_id' is required" if app_store_version_id || app_info_id.nil?
 
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appInfos/#{app_info_id}/ageRatingDeclaration", params)
+          tunes_request_client.get("v1/appInfos/#{app_info_id}/ageRatingDeclaration", params)
         end
 
         def patch_age_rating_declaration(age_rating_declaration_id: nil, attributes: nil)
@@ -33,7 +33,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("ageRatingDeclarations/#{age_rating_declaration_id}", body)
+          tunes_request_client.patch("v1/ageRatingDeclarations/#{age_rating_declaration_id}", body)
         end
 
         #
@@ -131,7 +131,115 @@ module Spaceship
             included: included
           }
 
-          tunes_request_client.post("apps", body)
+          tunes_request_client.post("v1/apps", body)
+        end
+
+        def create_default_availabilities(app_id:)
+          territories = tunes_request_client.get("v1/apps/#{app_id}/supportedTerritories?limit=200").body["data"].map { |t| t["id"] }
+          included = []
+          territoryAvailabilitiesData = []
+          territories.each_with_index do |territory, i|
+            territory_id = "#{app_id}-#{territory}"
+            included << {
+              "type": "territoryAvailabilities",
+              "id": territory_id,
+              "attributes": {
+                "available": false
+              },
+              "relationships": {
+                "territory": {
+                  "data": {
+                    "type": "territories",
+                    "id": territory
+                  }
+                }
+              }
+            }
+            territoryAvailabilitiesData << {
+              "type": "territoryAvailabilities",
+              "id": territory_id
+            }
+          end
+
+          body = {
+            "data": {
+              "type": "appAvailabilities",
+              "attributes": {
+                "availableInNewTerritories": false
+              },
+              "relationships": {
+                "app": {
+                  "data": {
+                    "type": "apps",
+                    "id": app_id
+                  }
+                },
+                "territoryAvailabilities": {
+                  "data": territoryAvailabilitiesData
+                }
+              }
+            },
+            "included": included
+          }
+
+          tunes_request_client.post("v2/appAvailabilities", body)
+        end
+
+        def update_availabilities(app_id:, territories: nil)
+          return unless territories
+
+          params = tunes_request_client.build_params(filter: {}, includes: "territory", limit: 200, sort: nil)
+          existing_territories = tunes_request_client.get("v2/appAvailabilities/#{app_id}/territoryAvailabilities", params).body
+
+          existing_territories["data"].each do |existing_territory|
+            existing_territory["attributes"]["available"] = territories.include?(existing_territory["relationships"]["territory"]["data"]["id"])
+          end
+          included = []
+          territoryAvailabilitiesData = []
+          existing_territories["data"].each do |territory, i|
+            included << {
+              "type": "territoryAvailabilities",
+              "id": territory["id"],
+              "attributes": {
+                "available": territory["attributes"]["available"]
+              },
+              "relationships": {
+                "territory": {
+                  "data": {
+                    "type": "territories",
+                    "id": territory["relationships"]["territory"]["data"]["id"]
+                  }
+                }
+              }
+            }
+            territoryAvailabilitiesData << {
+              "type": "territoryAvailabilities",
+              "id": territory["id"]
+            }
+          end
+
+          body = {
+            "data": {
+              "type": "bulkUpdateAppAvailabilities",
+              "attributes": {
+                "availableInNewTerritories": false
+              },
+              "relationships": {
+                "app": {
+                  "data": {
+                    "type": "apps",
+                    "id": app_id
+                  }
+                },
+                "territoryAvailabilities": {
+                  "data": territoryAvailabilitiesData
+                }
+              }
+            },
+            "included": included
+          }
+
+          tunes_request_client.post("v1/bulkUpdateAppAvailabilities", body)
         end
 
         # Updates app attributes, price tier, visibility in regions or countries.
@@ -206,7 +314,7 @@ module Spaceship
           }
           body[:included] = included unless included.empty?
 
-          tunes_request_client.patch("apps/#{app_id}", body)
+          tunes_request_client.patch("v1/apps/#{app_id}", body)
         end
 
         #
@@ -215,7 +323,7 @@ module Spaceship
 
         def get_app_data_usages(app_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/dataUsages", params)
+          tunes_request_client.get("v1/apps/#{app_id}/dataUsages", params)
         end
 
         def post_app_data_usage(app_id:, app_data_usage_category_id: nil, app_data_usage_protection_id: nil, app_data_usage_purpose_id: nil)
@@ -264,11 +372,11 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appDataUsages", body)
+          tunes_request_client.post("v1/appDataUsages", body)
         end
 
         def delete_app_data_usage(app_data_usage_id: nil)
-          tunes_request_client.delete("appDataUsages/#{app_data_usage_id}")
+          tunes_request_client.delete("v1/appDataUsages/#{app_data_usage_id}")
         end
 
         #
@@ -277,7 +385,7 @@ module Spaceship
 
         def get_app_data_usage_categories(filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appDataUsageCategories", params)
+          tunes_request_client.get("v1/appDataUsageCategories", params)
         end
 
         #
@@ -286,7 +394,7 @@ module Spaceship
 
         def get_app_data_usage_purposes(filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appDataUsagePurposes", params)
+          tunes_request_client.get("v1/appDataUsagePurposes", params)
         end
 
         #
@@ -295,7 +403,7 @@ module Spaceship
 
         def get_app_data_usages_publish_state(app_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("apps/#{app_id}/dataUsagePublishState", params)
+          tunes_request_client.get("v1/apps/#{app_id}/dataUsagePublishState", params)
         end
 
         def patch_app_data_usages_publish_state(app_data_usages_publish_state_id: nil, published: nil)
@@ -309,7 +417,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appDataUsagesPublishState/#{app_data_usages_publish_state_id}", body)
+          tunes_request_client.patch("v1/appDataUsagesPublishState/#{app_data_usages_publish_state_id}", body)
         end
 
         #
@@ -318,7 +426,7 @@ module Spaceship
 
         def get_app_preview(app_preview_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appPreviews/#{app_preview_id}", params)
+          tunes_request_client.get("v1/appPreviews/#{app_preview_id}", params)
         end
 
         def post_app_preview(app_preview_set_id: nil, attributes: {})
@@ -337,7 +445,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appPreviews", body)
+          tunes_request_client.post("v1/appPreviews", body)
         end
 
         def patch_app_preview(app_preview_id: nil, attributes: {})
@@ -349,12 +457,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appPreviews/#{app_preview_id}", body)
+          tunes_request_client.patch("v1/appPreviews/#{app_preview_id}", body)
         end
 
         def delete_app_preview(app_preview_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appPreviews/#{app_preview_id}", params)
+          tunes_request_client.delete("v1/appPreviews/#{app_preview_id}", params)
         end
 
         #
@@ -363,12 +471,12 @@ module Spaceship
 
         def get_app_preview_sets(filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appPreviewSets", params)
+          tunes_request_client.get("v1/appPreviewSets", params)
         end
 
         def get_app_preview_set(app_preview_set_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appPreviewSets/#{app_preview_set_id}", params)
+          tunes_request_client.get("v1/appPreviewSets/#{app_preview_set_id}", params)
         end
 
         def post_app_preview_set(app_store_version_localization_id: nil, attributes: {})
@@ -387,12 +495,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appPreviewSets", body)
+          tunes_request_client.post("v1/appPreviewSets", body)
         end
 
         def delete_app_preview_set(app_preview_set_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appPreviewSets/#{app_preview_set_id}", params)
+          tunes_request_client.delete("v1/appPreviewSets/#{app_preview_set_id}", params)
         end
 
         def patch_app_preview_set_previews(app_preview_set_id: nil, app_preview_ids: nil)
@@ -407,7 +515,7 @@ module Spaceship
             end
           }
 
-          tunes_request_client.patch("appPreviewSets/#{app_preview_set_id}/relationships/appPreviews", body)
+          tunes_request_client.patch("v1/appPreviewSets/#{app_preview_set_id}/relationships/appPreviews", body)
         end
 
         #
@@ -416,7 +524,7 @@ module Spaceship
 
         def get_available_territories(app_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/availableTerritories", params)
+          tunes_request_client.get("v2/appAvailabilities/#{app_id}/territoryAvailabilities", params)
         end
 
         #
@@ -425,12 +533,12 @@ module Spaceship
 
         def get_app_prices(app_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appPrices", params)
+          tunes_request_client.get("v1/appPrices", params)
         end
 
         def get_app_price(app_price_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appPrices/#{app_price_id}", params)
+          tunes_request_client.get("v1/appPrices/#{app_price_id}", params)
         end
 
         #
@@ -438,7 +546,7 @@ module Spaceship
         #
         def get_app_price_points(filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appPricePoints", params)
+          tunes_request_client.get("v1/appPricePoints", params)
         end
 
         #
@@ -461,7 +569,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appStoreReviewAttachments", body)
+          tunes_request_client.post("v1/appStoreReviewAttachments", body)
         end
 
         def patch_app_store_review_attachment(app_store_review_attachment_id: nil, attributes: {})
@@ -473,12 +581,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appStoreReviewAttachments/#{app_store_review_attachment_id}", body)
+          tunes_request_client.patch("v1/appStoreReviewAttachments/#{app_store_review_attachment_id}", body)
         end
 
         def delete_app_store_review_attachment(app_store_review_attachment_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appStoreReviewAttachments/#{app_store_review_attachment_id}", params)
+          tunes_request_client.delete("v1/appStoreReviewAttachments/#{app_store_review_attachment_id}", params)
         end
 
         #
@@ -487,12 +595,12 @@ module Spaceship
 
         def get_app_screenshot_sets(app_store_version_localization_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appStoreVersionLocalizations/#{app_store_version_localization_id}/appScreenshotSets", params)
+          tunes_request_client.get("v1/appStoreVersionLocalizations/#{app_store_version_localization_id}/appScreenshotSets", params)
         end
 
         def get_app_screenshot_set(app_screenshot_set_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appScreenshotSets/#{app_screenshot_set_id}", params)
+          tunes_request_client.get("v1/appScreenshotSets/#{app_screenshot_set_id}", params)
         end
 
         def post_app_screenshot_set(app_store_version_localization_id: nil, attributes: {})
@@ -511,7 +619,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appScreenshotSets", body)
+          tunes_request_client.post("v1/appScreenshotSets", body)
         end
 
         def patch_app_screenshot_set_screenshots(app_screenshot_set_id: nil, app_screenshot_ids: nil)
@@ -526,12 +634,12 @@ module Spaceship
             end
           }
 
-          tunes_request_client.patch("appScreenshotSets/#{app_screenshot_set_id}/relationships/appScreenshots", body)
+          tunes_request_client.patch("v1/appScreenshotSets/#{app_screenshot_set_id}/relationships/appScreenshots", body)
         end
 
         def delete_app_screenshot_set(app_screenshot_set_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appScreenshotSets/#{app_screenshot_set_id}", params)
+          tunes_request_client.delete("v1/appScreenshotSets/#{app_screenshot_set_id}", params)
         end
 
         #
@@ -540,7 +648,7 @@ module Spaceship
 
         def get_app_screenshot(app_screenshot_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appScreenshots/#{app_screenshot_id}", params)
+          tunes_request_client.get("v1/appScreenshots/#{app_screenshot_id}", params)
         end
 
         def post_app_screenshot(app_screenshot_set_id: nil, attributes: {})
@@ -559,7 +667,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appScreenshots", body, tries: 1)
+          tunes_request_client.post("v1/appScreenshots", body, tries: 1)
         end
 
         def patch_app_screenshot(app_screenshot_id: nil, attributes: {})
@@ -571,12 +679,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appScreenshots/#{app_screenshot_id}", body)
+          tunes_request_client.patch("v1/appScreenshots/#{app_screenshot_id}", body)
         end
 
         def delete_app_screenshot(app_screenshot_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appScreenshots/#{app_screenshot_id}", params)
+          tunes_request_client.delete("v1/appScreenshots/#{app_screenshot_id}", params)
         end
 
         #
@@ -585,7 +693,7 @@ module Spaceship
 
         def get_app_infos(app_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/appInfos", params)
+          tunes_request_client.get("v1/apps/#{app_id}/appInfos", params)
         end
 
         def patch_app_info(app_info_id: nil, attributes: {})
@@ -601,7 +709,7 @@ module Spaceship
             data: data
           }
 
-          tunes_request_client.patch("appInfos/#{app_info_id}", body)
+          tunes_request_client.patch("v1/appInfos/#{app_info_id}", body)
         end
 
         #
@@ -679,12 +787,12 @@ module Spaceship
             data: data
           }
 
-          tunes_request_client.patch("appInfos/#{app_info_id}", body)
+          tunes_request_client.patch("v1/appInfos/#{app_info_id}", body)
         end
 
         def delete_app_info(app_info_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appInfos/#{app_info_id}", params)
+          tunes_request_client.delete("v1/appInfos/#{app_info_id}", params)
         end
 
         #
@@ -693,7 +801,7 @@ module Spaceship
 
         def get_app_info_localizations(app_info_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appInfos/#{app_info_id}/appInfoLocalizations", params)
+          tunes_request_client.get("v1/appInfos/#{app_info_id}/appInfoLocalizations", params)
         end
 
         def post_app_info_localization(app_info_id: nil, attributes: {})
@@ -712,7 +820,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appInfoLocalizations", body)
+          tunes_request_client.post("v1/appInfoLocalizations", body)
         end
 
         def patch_app_info_localization(app_info_localization_id: nil, attributes: {})
@@ -724,7 +832,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appInfoLocalizations/#{app_info_localization_id}", body)
+          tunes_request_client.patch("v1/appInfoLocalizations/#{app_info_localization_id}", body)
         end
 
         #
@@ -733,7 +841,7 @@ module Spaceship
 
         def get_app_store_review_detail(app_store_version_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}/appStoreReviewDetail", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}/appStoreReviewDetail", params)
         end
 
         def post_app_store_review_detail(app_store_version_id: nil, attributes: {})
@@ -752,7 +860,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appStoreReviewDetails", body)
+          tunes_request_client.post("v1/appStoreReviewDetails", body)
         end
 
         def patch_app_store_review_detail(app_store_review_detail_id: nil, attributes: {})
@@ -764,7 +872,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appStoreReviewDetails/#{app_store_review_detail_id}", body)
+          tunes_request_client.patch("v1/appStoreReviewDetails/#{app_store_review_detail_id}", body)
         end
 
         #
@@ -773,12 +881,12 @@ module Spaceship
 
         def get_app_store_version_localizations(app_store_version_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}/appStoreVersionLocalizations", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}/appStoreVersionLocalizations", params)
         end
 
         def get_app_store_version_localization(app_store_version_localization_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appStoreVersionLocalizations/#{app_store_version_localization_id}", params)
+          tunes_request_client.get("v1/appStoreVersionLocalizations/#{app_store_version_localization_id}", params)
         end
 
         def post_app_store_version_localization(app_store_version_id: nil, attributes: {})
@@ -797,7 +905,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appStoreVersionLocalizations", body)
+          tunes_request_client.post("v1/appStoreVersionLocalizations", body)
         end
 
         def patch_app_store_version_localization(app_store_version_localization_id: nil, attributes: {})
@@ -809,12 +917,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appStoreVersionLocalizations/#{app_store_version_localization_id}", body)
+          tunes_request_client.patch("v1/appStoreVersionLocalizations/#{app_store_version_localization_id}", body)
         end
 
         def delete_app_store_version_localization(app_store_version_localization_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appStoreVersionLocalizations/#{app_store_version_localization_id}", params)
+          tunes_request_client.delete("v1/appStoreVersionLocalizations/#{app_store_version_localization_id}", params)
         end
 
         #
@@ -823,7 +931,7 @@ module Spaceship
 
         def get_app_store_version_phased_release(app_store_version_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}/appStoreVersionPhasedRelease", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}/appStoreVersionPhasedRelease", params)
         end
 
         def post_app_store_version_phased_release(app_store_version_id: nil, attributes: {})
@@ -842,7 +950,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appStoreVersionPhasedReleases", body)
+          tunes_request_client.post("v1/appStoreVersionPhasedReleases", body)
         end
 
         def patch_app_store_version_phased_release(app_store_version_phased_release_id: nil, attributes: {})
@@ -854,12 +962,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appStoreVersionPhasedReleases/#{app_store_version_phased_release_id}", body)
+          tunes_request_client.patch("v1/appStoreVersionPhasedReleases/#{app_store_version_phased_release_id}", body)
         end
 
         def delete_app_store_version_phased_release(app_store_version_phased_release_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appStoreVersionPhasedReleases/#{app_store_version_phased_release_id}", params)
+          tunes_request_client.delete("v1/appStoreVersionPhasedReleases/#{app_store_version_phased_release_id}", params)
         end
 
         #
@@ -868,12 +976,12 @@ module Spaceship
 
         def get_app_store_versions(app_id: nil, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/appStoreVersions", params)
+          tunes_request_client.get("v1/apps/#{app_id}/appStoreVersions", params)
         end
 
         def get_app_store_version(app_store_version_id: nil, includes: nil)
           params = tunes_request_client.build_params(filter: nil, includes: includes, limit: nil, sort: nil)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}", params)
         end
 
         def post_app_store_version(app_id: nil, attributes: {})
@@ -892,7 +1000,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appStoreVersions", body)
+          tunes_request_client.post("v1/appStoreVersions", body)
         end
 
         def patch_app_store_version(app_store_version_id: nil, attributes: {})
@@ -904,7 +1012,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appStoreVersions/#{app_store_version_id}", body)
+          tunes_request_client.patch("v1/appStoreVersions/#{app_store_version_id}", body)
         end
 
         def patch_app_store_version_with_build(app_store_version_id: nil, build_id: nil)
@@ -928,7 +1036,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("appStoreVersions/#{app_store_version_id}", body)
+          tunes_request_client.patch("v1/appStoreVersions/#{app_store_version_id}", body)
         end
 
         #
@@ -937,7 +1045,7 @@ module Spaceship
 
         def get_reset_ratings_request(app_store_version_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}/resetRatingsRequest", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}/resetRatingsRequest", params)
         end
 
         def post_reset_ratings_request(app_store_version_id: nil)
@@ -955,12 +1063,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("resetRatingsRequests", body)
+          tunes_request_client.post("v1/resetRatingsRequests", body)
         end
 
         def delete_reset_ratings_request(reset_ratings_request_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("resetRatingsRequests/#{reset_ratings_request_id}", params)
+          tunes_request_client.delete("v1/resetRatingsRequests/#{reset_ratings_request_id}", params)
         end
 
         #
@@ -969,7 +1077,7 @@ module Spaceship
 
         def get_app_store_version_submission(app_store_version_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}/appStoreVersionSubmission", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}/appStoreVersionSubmission", params)
         end
 
         def post_app_store_version_submission(app_store_version_id: nil)
@@ -987,12 +1095,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("appStoreVersionSubmissions", body)
+          tunes_request_client.post("v1/appStoreVersionSubmissions", body)
         end
 
         def delete_app_store_version_submission(app_store_version_submission_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("appStoreVersionSubmissions/#{app_store_version_submission_id}", params)
+          tunes_request_client.delete("v1/appStoreVersionSubmissions/#{app_store_version_submission_id}", params)
         end
 
         #
@@ -1014,7 +1122,7 @@ module Spaceship
               }
           }
 
-          tunes_request_client.post("appStoreVersionReleaseRequests", body)
+          tunes_request_client.post("v1/appStoreVersionReleaseRequests", body)
         end
 
         #
@@ -1023,7 +1131,7 @@ module Spaceship
 
         def get_custom_app_users(app_id: nil, filter: nil, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/customAppUsers", params)
+          tunes_request_client.get("v1/apps/#{app_id}/customAppUsers", params)
         end
 
         def post_custom_app_user(app_id: nil, apple_id: nil)
@@ -1044,12 +1152,12 @@ module Spaceship
               }
           }
 
-          tunes_request_client.post("customAppUsers", body)
+          tunes_request_client.post("v1/customAppUsers", body)
         end
 
         def delete_custom_app_user(custom_app_user_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("customAppUsers/#{custom_app_user_id}", params)
+          tunes_request_client.delete("v1/customAppUsers/#{custom_app_user_id}", params)
         end
 
         #
@@ -1058,7 +1166,7 @@ module Spaceship
 
         def get_custom_app_organization(app_id: nil, filter: nil, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/customAppOrganizations", params)
+          tunes_request_client.get("v1/apps/#{app_id}/customAppOrganizations", params)
         end
 
         def post_custom_app_organization(app_id: nil, device_enrollment_program_id: nil, name: nil)
@@ -1080,12 +1188,12 @@ module Spaceship
               }
           }
 
-          tunes_request_client.post("customAppOrganizations", body)
+          tunes_request_client.post("v1/customAppOrganizations", body)
         end
 
         def delete_custom_app_organization(custom_app_organization_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("customAppOrganizations/#{custom_app_organization_id}", params)
+          tunes_request_client.delete("v1/customAppOrganizations/#{custom_app_organization_id}", params)
         end
 
         #
@@ -1094,7 +1202,7 @@ module Spaceship
 
         def get_idfa_declaration(app_store_version_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("appStoreVersions/#{app_store_version_id}/idfaDeclaration", params)
+          tunes_request_client.get("v1/appStoreVersions/#{app_store_version_id}/idfaDeclaration", params)
         end
 
         def post_idfa_declaration(app_store_version_id: nil, attributes: nil)
@@ -1113,7 +1221,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("idfaDeclarations", body)
+          tunes_request_client.post("v1/idfaDeclarations", body)
         end
 
         def patch_idfa_declaration(idfa_declaration_id: nil, attributes: nil)
@@ -1125,12 +1233,12 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("idfaDeclarations/#{idfa_declaration_id}", body)
+          tunes_request_client.patch("v1/idfaDeclarations/#{idfa_declaration_id}", body)
         end
 
         def delete_idfa_declaration(idfa_declaration_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("idfaDeclarations/#{idfa_declaration_id}", params)
+          tunes_request_client.delete("v1/idfaDeclarations/#{idfa_declaration_id}", params)
         end
 
         #
@@ -1139,12 +1247,12 @@ module Spaceship
 
         def get_review_submissions(app_id:, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("apps/#{app_id}/reviewSubmissions", params)
+          tunes_request_client.get("v1/apps/#{app_id}/reviewSubmissions", params)
         end
 
         def get_review_submission(review_submission_id:, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("reviewSubmissions/#{review_submission_id}", params)
+          tunes_request_client.get("v1/reviewSubmissions/#{review_submission_id}", params)
         end
 
         def post_review_submission(app_id:, platform:)
@@ -1165,7 +1273,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.post("reviewSubmissions", body)
+          tunes_request_client.post("v1/reviewSubmissions", body)
         end
 
         def patch_review_submission(review_submission_id:, attributes: nil)
@@ -1177,7 +1285,7 @@ module Spaceship
             }
           }
 
-          tunes_request_client.patch("reviewSubmissions/#{review_submission_id}", body)
+          tunes_request_client.patch("v1/reviewSubmissions/#{review_submission_id}", body)
         end
 
         #
@@ -1186,7 +1294,7 @@ module Spaceship
 
         def get_review_submission_items(review_submission_id:, filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("reviewSubmissions/#{review_submission_id}/items", params)
+          tunes_request_client.get("v1/reviewSubmissions/#{review_submission_id}/items", params)
         end
 
         def post_review_submission_item(review_submission_id:, app_store_version_id: nil)
@@ -1213,7 +1321,7 @@ module Spaceship
             }
           end
 
-          tunes_request_client.post("reviewSubmissionItems", body)
+          tunes_request_client.post("v1/reviewSubmissionItems", body)
         end
 
         #
@@ -1222,7 +1330,7 @@ module Spaceship
 
         def get_sandbox_testers(filter: nil, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes, limit: limit, sort: sort)
-          tunes_request_client.get("sandboxTesters", params)
+          tunes_request_client.get("v1/sandboxTesters", params)
         end
 
         def post_sandbox_tester(attributes: {})
@@ -1238,7 +1346,7 @@ module Spaceship
 
         def delete_sandbox_tester(sandbox_tester_id: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.delete("sandboxTesters/#{sandbox_tester_id}", params)
+          tunes_request_client.delete("v1/sandboxTesters/#{sandbox_tester_id}", params)
         end
 
         #
@@ -1247,7 +1355,7 @@ module Spaceship
 
         def get_territories(filter: {}, includes: nil, limit: nil, sort: nil)
           params = tunes_request_client.build_params(filter: nil, includes: nil, limit: nil, sort: nil)
-          tunes_request_client.get("territories", params)
+          tunes_request_client.get("v1/territories", params)
         end
 
         #
@@ -1260,17 +1368,17 @@ module Spaceship
 
         def get_resolution_center_threads(filter: {}, includes: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes)
-          tunes_request_client.get('resolutionCenterThreads', params)
+          tunes_request_client.get('v1/resolutionCenterThreads', params)
         end
 
         def get_resolution_center_messages(thread_id:, filter: {}, includes: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes)
-          tunes_request_client.get("resolutionCenterThreads/#{thread_id}/resolutionCenterMessages", params)
+          tunes_request_client.get("v1/resolutionCenterThreads/#{thread_id}/resolutionCenterMessages", params)
         end
 
         def get_review_rejection(filter: {}, includes: nil)
           params = tunes_request_client.build_params(filter: filter, includes: includes)
-          tunes_request_client.get("reviewRejections", params)
+          tunes_request_client.get("v1/reviewRejections", params)
         end
       end
     end
